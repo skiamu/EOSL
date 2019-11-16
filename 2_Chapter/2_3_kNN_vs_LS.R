@@ -3,6 +3,7 @@ library(class)
 library(tidyverse)
 library(tidymodels)
 library(zeallot)
+
 generate_data <- function(means, Sigma, N, response_var = NULL) {
     data <- means %>%
         purrr::array_branch(margin = 1) %>%
@@ -36,18 +37,22 @@ data_test <- bind_rows(
     generate_data(means_blu, Sigma = Sigma, N = 10),
     generate_data(means_orange, Sigma = Sigma, N = 10)
 )
+X1 <- seq(-4, 4, by = 0.2)
+X2 <- seq(-4, 4, by = 0.2)
+data_test <- expand.grid(x = X1, y = X2) %>%
+    `colnames<-`(c("X1", "X2")) %>%
+    as_tibble()
 ## -----------------------------------------------------------------------------
 # 2) LINEAR REGRESSION CLASSIFIER
 ## -----------------------------------------------------------------------------
-lm_obj <- data %>%
+lm_obj <- data_fit %>%
     lm(Y ~ X1 + X2, data = .)
 c(beta_0, beta_1, beta_2) %<-% coef(lm_obj)
 lm_tidy <- lm_obj %>%
     broom::tidy()
 classifier_LR <- lm_obj %>%
-    broom::augment(newdata = data_fit) %>%
+    broom::augment(newdata = data_test) %>%
     mutate(group = factor(if_else(.fitted > .5, "orange", "blue")))
-
 ## -----------------------------------------------------------------------------
 # 3) kNN CLASSIFIER
 ## -----------------------------------------------------------------------------
@@ -56,7 +61,7 @@ classifier_kNN <- class::knn(
     test = data_test,
     cl = factor(data_fit$Y),
     k = 15
-) %>% mutate(.data = data_fit, .fitted = .) %>%
+) %>% mutate(.data = data_test, .fitted = .) %>%
     mutate(group = factor(if_else(.fitted == 1, "orange", "blue")))
 
 ## -----------------------------------------------------------------------------
@@ -70,7 +75,16 @@ slope <- -beta_1 / beta_2
 data_fit %>%
     mutate(group = factor(if_else(Y == 1, "orange", "blue"))) %>%
     ggplot() + 
-    geom_point(aes(x = X1, y = X2, color = group)) + 
+    geom_point(aes(x = X1, y = X2, color = group), size = 3) + 
+    geom_point(data = classifier_LR, aes(x = X1, y = X2, color = group), shape = 1) + 
     scale_color_manual(values = color_map) + 
-    geom_abline(intercept = intercept, slope = slope)
+    geom_abline(intercept = intercept, slope = slope) +
+    ggtitle("Test sample and linear boundary")
 
+data_fit %>%
+    mutate(group = factor(if_else(Y == 1, "orange", "blue"))) %>%
+    ggplot() + 
+    geom_point(aes(x = X1, y = X2, color = group), size = 3) + 
+    geom_point(data = classifier_kNN, aes(x = X1, y = X2, color = group), shape = 1) + 
+    scale_color_manual(values = color_map) + 
+    ggtitle("Test sample and kNN boundary")
