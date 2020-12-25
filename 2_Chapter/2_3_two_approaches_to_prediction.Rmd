@@ -1,0 +1,227 @@
+---
+title: "2_3_two_simple_approaches_to_prediction"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+In this notebook we will replicate the plots on section 2.3 of the book
+
+```{r, eval=TRUE}
+suppressPackageStartupMessages(library(tidyverse))
+suppressPackageStartupMessages(library(tidymodels))
+library(ElemStatLearn) # not on CRAN anymore
+library(zeallot)
+library(class) # for k-nearest neighbor
+library(MASS) # for generating multivariate normals
+library(conflicted)
+conflict_prefer("select", "dplyr")
+```
+
+# Data description
+
+```{r , eval=TRUE}
+data("mixture.example")
+str(mixture.example, max.level = 1)
+X <- mixture.example$x
+y <- mixture.example$y # 0 BLUE, 1 # ORANGE
+# is has to be a dataframe for being used in `broom::augment`
+xnew_df <- tibble(
+    x1 = mixture.example$xnew[, 1],
+    x2 = mixture.example$xnew[, 2]
+)
+data <- tibble(
+    y = y,
+    x1 = X[, 1],
+    x2 = X[, 2],
+    color = if_else(
+        y == 0,
+        "BLUE",
+        "ORANGE"
+    )
+)
+
+```
+
+
+# Linear regression
+
+## Linear model
+Let's run the linear regression for getting the parameters of the linear decision
+boundary
+
+```{r}
+fit <- lm(y ~ x1 + x2, data = data)
+fit_tidy <- broom::tidy(fit)
+c(beta_0, beta_1, beta_2) %<-% fit_tidy[["estimate"]]
+a <- (0.5 - beta_0) / beta_2
+b <- -beta_1 / beta_2
+```
+
+The linear model we have estimated is $$ \hat{Y} = \hat{\beta_0} + \hat{\beta_1 X_1} 
++ \hat{\beta_2}X_2.
+$$
+The linear decison boundary is $x^T\beta=\frac{1}{2}$, which means that the boundary
+line $x_2 = a + b x_1$ has the following parameters:
+
+* $a = \frac{0.5 - \hat{\beta_0}}{\hat{\beta}_2}$
+
+* $b = -\frac{\hat{\beta}_1}{\hat{\beta}_2}$
+
+## Prediction
+```{r}
+new_fit <- broom::augment(fit, newdata = xnew_df) %>% 
+    mutate(color = if_else(
+        .fitted > 0.5,
+        "ORANGE",
+        "BLUE"
+    ))
+```
+
+## Plot
+```{r}
+data %>% 
+    ggplot(aes(x = x1, y = x2, color = color)) + 
+    geom_point(shape = 1, size =2) + 
+    geom_point(data = new_fit, alpha = 0.1, shape = 20) +
+    scale_color_manual(values = c("BLUE"="blue1", "ORANGE"="darkorange1")) + 
+    geom_abline(slope = b, intercept = a) +
+    ggtitle("Linear Regression")
+
+```
+
+
+
+# k-Nearest Neighbor
+Figure 2.2 of the book is obtained by using a 15-nearest neighbor algorithm. 
+
+## Fitting
+
+```{r}
+knn_fit <- class::knn(
+    train = data %>% select(x1, x2),
+    test = xnew_df,
+    cl = factor(data$y),
+    k = 15,
+    prob = TRUE
+)
+xnew_df_15 <- xnew_df %>% 
+    mutate(color = if_else(
+        knn_fit == 0,
+        "BLUE",
+        "ORANGE"
+    ),
+    prob = attr(knn_fit, "prob"),
+    prob = if_else(
+        knn_fit == 1,
+        prob,
+        1 - prob
+    ))
+
+```
+
+we needed to do convert the proportion of the votes for the winning class in the 
+proportion of ORANGES in order to do the contour plot.
+ 
+## Plot
+
+```{r}
+ 
+ggplot() +
+    geom_point(
+        aes(x = x1, y = x2, color = color),
+        shape = 1,
+        size = 2,
+        data = data
+    ) +
+    geom_point(
+        data = xnew_df_15,
+        aes(x = x1, y = x2, color = color),
+        alpha = 0.1,
+        shape = 20
+    ) +
+    scale_color_manual(values = c("BLUE" = "blue1", "ORANGE" = "darkorange1")) +
+    geom_contour(aes(x1, x2, z = prob),
+                 breaks = c(0, 0.5),
+                 data = xnew_df_15,
+                 color = "black"
+    ) +
+    ggtitle("15-Nearest Neighbor")
+
+```
+
+If we use a 1-nearest neighbor algorithm we get figure 2.3 of the book
+
+```{r}
+knn_fit <- class::knn(
+    train = data %>% select(x1, x2),
+    test = xnew_df,
+    cl = factor(data$y),
+    k = 1,
+    prob = TRUE
+)
+xnew_df_1 <- xnew_df %>% 
+    mutate(color = if_else(
+        knn_fit == 0,
+        "BLUE",
+        "ORANGE"
+    ),
+    prob = attr(knn_fit, "prob"),
+    prob = if_else(
+        knn_fit == 1,
+        prob,
+        1 - prob
+    ))
+ggplot() +
+    geom_point(
+        aes(x = x1, y = x2, color = color),
+        shape = 1,
+        size = 2,
+        data = data
+    ) +
+    geom_point(
+        data = xnew_df_1,
+        aes(x = x1, y = x2, color = color),
+        alpha = 0.1,
+        shape = 20
+    ) +
+    scale_color_manual(values = c("BLUE" = "blue1", "ORANGE" = "darkorange1")) +
+    geom_contour(aes(x1, x2, z = prob),
+                 breaks = c(0, 0.5),
+                 data = xnew_df_1,
+                 color = "black"
+    ) +
+    ggtitle("1-Nearest Neighbor")
+```
+
+# Misclassification curves
+
+In this section we reproduce Figure 2.4.
+The data doesn't include the test sample so we need to generate it
+
+## Generate test sample
+
+The algorithm for generating the $k$-th observation for class ORANGE is as follows:
+
+1. pick the mean $m_k$ among the ten available with uniform probability
+
+2. draw the observation from $N(m_k, I / 5)$  
+
+```{r}
+# means_vec <- mixture.example[["means"]]
+# set.seed(123)
+# 
+# generate_data <- function(means_vec, N = 5000) {
+#     
+# } # generate_data
+
+```
+
+ 
+ 
