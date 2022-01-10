@@ -1,0 +1,153 @@
+---
+title: "Local methods in high dimensions"
+output: 
+    html_document:
+    extra_dependencies: ["bbm", "amsmath", "mathtools"]
+---
+
+# Introduction
+In this notebook we will replicate figure 2.7 on page 25
+
+# Example 1
+
+Let us recall the setting. The training set consists of $N=1000$ observations from
+a $p$-dimensional uniform distribution (i.e. $x_i \sim \mathcal{U}([-1, 1]^p)$). The true
+relationship between $Y$ and $X$ is $$ Y = \exp\big\{-8 \lvert X \lvert^2\big\}.$$
+We are interested in predicting the true value at $x_0 = 0$ using the **1-nearest neighbor**
+algorithm using the training set $\mathcal{T}$.
+
+## 1-NN in one dimension
+In this plot we will see the error in estimating $f(x_0)$ in dimensione 1
+```{r}
+suppressPackageStartupMessages(library(tidyverse))
+library(futile.logger)
+library(latex2exp)
+f <- function(x) { # function generating the data
+    exp(-8 * apply(
+        X = x,
+        MARGIN = 1,
+        FUN = function(x) {
+            t(x) %*% x
+        }
+    ))
+}
+## Generate the data -----------------------------------------------------------
+set.seed(12)
+N <- 10
+p <- 1
+tau <- matrix(runif(n = N * p, min = -1), nrow = N, ncol = p)
+f_tau <- f(tau)
+train_df <- tibble(
+    x = as.numeric(tau),
+    y = f_tau
+) %>% 
+    mutate(
+        dist_from_zero = (x - 0)^2,
+        is_closest = dist_from_zero == min(dist_from_zero) 
+    )
+N <- 1e+4
+xx <- matrix(runif(n = N * p, min = -1), nrow = N, ncol = p) 
+continous_df <- tibble(
+    x = as.numeric(xx),
+    y = f(xx)
+)
+## Plot ------------------------------------------------------------------------
+ggplot() + 
+    geom_line(data = continous_df, aes(x = x, y = y), color = "green") +
+    geom_point(data = train_df, aes(x = x, y = y)) + 
+    geom_point(
+        data = train_df %>% filter(is_closest),
+        aes(x = x, y = y),
+        color = "blue",
+        size = 2
+    ) + 
+    geom_segment(
+        data = train_df %>% filter(is_closest),
+        aes(
+            x = x,
+            y = y,
+            xend = x,
+            yend = 1
+        ),
+        linetype = "dotted"
+    ) + 
+    geom_segment(
+        data = train_df %>% filter(is_closest),
+        aes(
+            x = x,
+            y = 1,
+            xend = 0,
+            yend = 1
+        ),
+        linetype = "dotted"
+    ) + 
+  labs(
+    y = TeX("$f(x)$"),
+    x = "x"
+  )
+```
+
+```{r}
+
+# function for generating num_datasets datasets of N observation in p dimension 
+generate_data <- function(p, N, num_datasets = 100) {
+    map(
+        1:num_datasets,
+        ~ {
+            matrix(runif(n = N * p, min = -1), nrow = N, ncol = p)
+        }
+    )
+} 
+# each element of the list 
+tau_list <- map( 
+    1:10,
+    generate_data,
+    N = 1000,
+    num_datasets = 100
+) %>% 
+    set_names(1:10)
+
+# DESCRIPTION: given a training set, this function applies 1NN to predict the value
+# at 0
+# INPUT:
+#    tau = a matrix with the training data, observations are rows
+# OUTPUT:
+compute_MSE <- function(tau) {
+    if (ncol(tau) == 1) {
+        input_distance_from_zero <- tau^2
+    } else {
+      input_distance_from_zero <- apply(
+        X = tau,
+        MARGIN = 1,
+        FUN = function(x) {
+            t(x) %*% x
+        }
+    )  
+    }
+    input_closest_to_zero <- input_distance_from_zero[which.min(input_distance_from_zero)]
+    prediction <- exp(-8 * input_closest_to_zero^2)
+} # compute_MSE
+
+out <- tau_list %>% 
+    imap_dfr( ~ {
+        flog.info(paste(
+            "Computing MSE, p =", .y
+        ))
+        prediction_vec <- .x %>% map_dbl(compute_MSE)
+        y <- 1
+        tibble(
+            var = var(prediction_vec),
+            bias_squared = (1 - mean(prediction_vec))^2,
+            MSE = var + bias_squared,
+            p = as.numeric(.y)
+        )
+    })
+out %>% 
+    pivot_longer(cols = -p) %>% 
+    ggplot(aes(x = p, y = value, color = name)) + 
+    geom_point() + 
+    geom_line() + 
+    scale_y_continuous(breaks = seq(from = 0, to = 1, by = 0.1)) + 
+    scale_x_continuous(breaks = 1:10)
+```
+

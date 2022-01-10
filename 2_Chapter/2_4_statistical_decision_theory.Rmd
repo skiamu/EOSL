@@ -1,0 +1,24 @@
+---
+title: "Statistical Decison Theory"
+output: 
+    html_document: default
+    pdf_document: default
+    extra_dependencies: ["bbm", "amsmath"]
+---
+
+# Introduction
+In this notebook we are going to discuss some equations presented in chapter 2.5
+of the book. Let recall some notation; let $X \in \mathbb{R}^p$ be the random input 
+vector and $Y \in \mathbb{R}$ be the output random variable. The goal is finding
+a function $f \colon \mathbb{R}^p \to \mathbb{R}$ for predicting $Y$ given the values
+of th input $X$. The loss function is the usual *means square error function* 
+$L(Y, f(X)) = \big(Y-f(X)\big)^2$
+
+# The *regression function*
+The **expected prediction error** (EPE) is defined as
+$$ EPE(f) = \mathbb{E}\Big[L(Y, f(X))\Big] = \mathbb{E}\Big[\big(Y-f(X)\big)^2\Big], $$
+and conditioning on $X$ we can rewrite it as 
+$$\begin{align}
+EPE(f) & = \mathbb{E}\Bigg[\mathbb{E}\Big[\big(Y-f(X)\big)^2 \Big\lvert X  \Big]\Bigg] \\
+& = \mathbb{E}\Bigg[\mathbb{E}\Big[\big(Y - \mathbb{E}[Y \lvert X]\big)^2 \Big\lvert X  \Big]\Bigg]
+\end{align}$$
